@@ -390,7 +390,7 @@
 			if(is_array($settings[self::getClass()]['parameters']) && !empty($settings[self::getClass()]['parameters'])){
 				$ii = 0;
 				foreach($settings[self::getClass()]['parameters'] as $key => $value) {
-					// Parameters get saved to the file as $name => $uri, however in
+					// Parameters get saved to the file as $key => $value, however in
 					// the $_POST they are represented as $index => array. This loop
 					// patches the difference.
 					if(is_array($value)) {
