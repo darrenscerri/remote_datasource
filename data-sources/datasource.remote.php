@@ -113,7 +113,7 @@
 					
 					$gateway->setopt('POST', count($tuples));
 					$fields = '';					
-					if($json==='on') {
+					if($json === 'on') {
 						$fields = json_encode($tuples);
 						$header[] = 'Content-Type: application/json';
 						$header[] = 'Content-Length: ' . strlen($fields);
@@ -170,15 +170,14 @@
 		}
 
 		/**
-		 * Builds the namespaces out to be saved in the Datasource file
+		 * Builds the POST parameters out to be saved in the Datasource file
 		 *
-		 * @param array $namespaces
-		 *  An associative array of where the key is the namespace prefix
-		 *  and the value is the namespace URL.
+		 * @param array $parameters
+		 *  An associative array of POST parameters
 		 * @param string $template
 		 *  The template file, as defined by `getTemplate()`
 		 * @return string
-		 *  The template injected with the Namespaces (if any).
+		 *  The template injected with the Parameters (if any).
 		 */
 		public static function injectParameters(array $parameters, &$template) {
 			if(empty($parameters)) return;
@@ -391,7 +390,7 @@
 			if(is_array($settings[self::getClass()]['parameters']) && !empty($settings[self::getClass()]['parameters'])){
 				$ii = 0;
 				foreach($settings[self::getClass()]['parameters'] as $key => $value) {
-					// Namespaces get saved to the file as $name => $uri, however in
+					// Parameters get saved to the file as $name => $uri, however in
 					// the $_POST they are represented as $index => array. This loop
 					// patches the difference.
 					if(is_array($value)) {
@@ -452,9 +451,6 @@
 			$ol->appendChild($li);
 
 			$div->appendChild($ol);
-			// $div->appendChild(
-				// new XMLElement('p', __('Namespaces will automatically be discovered when saving this datasource if it does not include any dynamic portions.'), array('class' => 'help'))
-			// );
 
 			$fieldset->appendChild($div);
 			
@@ -468,12 +464,8 @@
 			}
 			
 			$label->appendChild($input);
-			
-			
 			$fieldset->appendChild($label);
-			
-			
-			
+
 			// Included Elements
 			$label = Widget::Label(__('Included Elements'));
 			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][xpath]', General::sanitize($settings[self::getClass()]['xpath'])));
@@ -679,9 +671,6 @@
 						$ch = new Gateway;
 						$ch->init($this->dsParamURL);
 						$ch->setopt('TIMEOUT', $this->dsParamTIMEOUT);
-
-						$json = $this->dsParamJSONPOST;
-						
 						$header = array();
 				
 						// Set the approtiate Accept: headers depending on the format of the URL.
@@ -697,7 +686,9 @@
 							
 							$ch->setopt('POST', count($parameters));
 							$fields = '';
-							if($json==='on') {
+							$json = $this->dsParamJSONPOST;
+							
+							if($json === 'on') {
 								$fields = json_encode($parameters);
 								$header[] = 'Content-Type: application/json';
 								$header[] = 'Content-Length: ' . strlen($fields);
