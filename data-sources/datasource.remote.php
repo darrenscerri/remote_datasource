@@ -26,11 +26,13 @@
 		public function settings() {
 			$settings = array();
 
-			$settings[self::getClass()]['namespace'] = $this->dsParamNAMESPACES;
+			$settings[self::getClass()]['namespaces'] = $this->dsParamNAMESPACES;
+			$settings[self::getClass()]['parameters'] = $this->dsParamPARAMETERS;
 			$settings[self::getClass()]['url'] = $this->dsParamURL;
 			$settings[self::getClass()]['xpath'] = isset($this->dsParamXPATH) ? $this->dsParamXPATH : '/';
-			$settings[self::getClass()]['cache'] = $this->dsParamCACHE;
-			$settings[self::getClass()]['format'] = $this->dsParamFORMAT;
+			$settings[self::getClass()]['jsonpost'] = isset($this->dsParamJSONPOST) ? $this->dsParamJSONPOST : '';
+			$settings[self::getClass()]['cache'] = isset($this->dsParamCACHE) ? $this->dsParamCACHE : 30;
+			$settings[self::getClass()]['format'] = isset($this->dsParamFORMAT) ? $this->dsParamFORMAT : 'xml';
 			$settings[self::getClass()]['timeout'] = isset($this->dsParamTIMEOUT) ? $this->dsParamTIMEOUT : 6;
 
 			return $settings;
@@ -79,25 +81,53 @@
 		 *  Returns an array with the 'data' if it is a valid URL, otherwise a string
 		 *  containing an error message.
 		 */
-		public static function isValidURL($url, $timeout = 6, $format = 'xml', $fetch_URL = false) {
+		public static function isValidURL($url, $timeout = 6, $format = 'xml', $fetch_URL = false, $parameters=array(), $json=false) {
+
 			// Check that URL was provided
 			if(trim($url) == '') {
 				return __('This is a required field');
 			}
+			
 			// Check to see the URL works.
 			else if ($fetch_URL === true) {
 				$gateway = new Gateway;
 				$gateway->init($url);
 				$gateway->setopt('TIMEOUT', $timeout);
 
+				$header = array();
+				
 				// Set the approtiate Accept: headers depending on the format of the URL.
 				if($format == 'xml') {
-					$gateway->setopt('HTTPHEADER', array('Accept: text/xml, */*'));
+					$header[] = 'Accept: text/xml, */*';
 				}
 				else if($format == 'json') {
-					$gateway->setopt('HTTPHEADER', array('Accept: application/json, */*'));
+					$header[] = 'Accept: application/json, */*';
 				}
-
+				
+				if (isset($parameters) && is_array($parameters) && !empty($parameters)) {
+				
+					$tuples = array();
+					foreach ($parameters as $parameter) {
+						$tuples[$parameter['key']] = $parameter['value'];
+					}
+					
+					$gateway->setopt('POST', count($tuples));
+					$fields = '';			
+					if($json === 'on') {
+						$fields = json_encode($tuples);
+						$header[] = 'Content-Type: application/json';
+						$header[] = 'Content-Length: ' . strlen($fields);
+					} else {
+						foreach ($tuples as $key => $value) {
+							if(empty($key)) continue;
+							$fields .= $key.'='.$value.'&';
+						}
+						$fields = rtrim($fields,'&');
+					}
+						
+					$gateway->setopt('POSTFIELDS', $fields);
+				}				
+				$gateway->setopt('HTTPHEADER', $header);
 				$data = $gateway->exec();
 				$info = $gateway->getInfoLast();
 
@@ -140,6 +170,31 @@
 		}
 
 		/**
+		 * Builds the POST parameters out to be saved in the Datasource file
+		 *
+		 * @param array $parameters
+		 *  An associative array of POST parameters
+		 * @param string $template
+		 *  The template file, as defined by `getTemplate()`
+		 * @return string
+		 *  The template injected with the Parameters(if any).
+		 */
+		public static function injectParameters(array $parameters, &$template) {
+			if(empty($parameters)) return;
+
+			$placeholder = '<!-- PARAMETERS -->';
+			$string = 'public $dsParamPARAMETERS = array(' . PHP_EOL;
+
+			foreach($parameters as $key => $val){
+				if(trim($val) == '') continue;
+				$string .= "\t\t\t'$key' => '" . addslashes($val) . "'," . PHP_EOL;
+			}
+
+			$string .= "\t\t);" . PHP_EOL . "\t\t" . $placeholder;
+			$template = str_replace($placeholder, trim($string), $template);
+		}
+		
+		/**
 		 * Helper function to build Cache information block
 		 *
 		 * @param XMLElement $wrapper
@@ -174,8 +229,10 @@
 				$cache_id = md5(
 					$settings[self::getClass()]['url'] .
 					serialize($settings[self::getClass()]['namespaces']) .
+					serialize($settings[self::getClass()]['parameters']) .
 					$settings[self::getClass()]['xpath'] .
-					$settings[self::getClass()]['format']
+					$settings[self::getClass()]['format'] .
+					$settings[self::getClass()]['jsonpost']
 				);
 			}
 
@@ -248,9 +305,9 @@
 			$ol->setAttribute('data-add', __('Add namespace'));
 			$ol->setAttribute('data-remove', __('Remove namespace'));
 
-			if(is_array($settings[self::getClass()]['namespace']) && !empty($settings[self::getClass()]['namespace'])){
+			if(is_array($settings[self::getClass()]['namespaces']) && !empty($settings[self::getClass()]['namespaces'])){
 				$ii = 0;
-				foreach($settings[self::getClass()]['namespace'] as $name => $uri) {
+				foreach($settings[self::getClass()]['namespaces'] as $name => $uri) {
 					// Namespaces get saved to the file as $name => $uri, however in
 					// the $_POST they are represented as $index => array. This loop
 					// patches the difference.
@@ -272,12 +329,12 @@
 
 					$label = Widget::Label(__('Name'));
 					$label->setAttribute('class', 'column');
-					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][namespace][$ii][name]", General::sanitize($name)));
+					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][namespaces][$ii][name]", General::sanitize($name)));
 					$group->appendChild($label);
 
 					$label = Widget::Label(__('URI'));
 					$label->setAttribute('class', 'column');
-					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][namespace][$ii][uri]", General::sanitize($uri)));
+					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][namespaces][$ii][uri]", General::sanitize($uri)));
 					$group->appendChild($label);
 
 					$li->appendChild($group);
@@ -300,12 +357,12 @@
 
 			$label = Widget::Label(__('Name'));
 			$label->setAttribute('class', 'column');
-			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][namespace][-1][name]'));
+			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][namespaces][-1][name]'));
 			$group->appendChild($label);
 
 			$label = Widget::Label(__('URI'));
 			$label->setAttribute('class', 'column');
-			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][namespace][-1][uri]'));
+			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][namespaces][-1][uri]'));
 			$group->appendChild($label);
 
 			$li->appendChild($group);
@@ -318,6 +375,99 @@
 
 			$fieldset->appendChild($div);
 
+			// POST
+			$div = new XMLElement('div');
+			$p = new XMLElement('p', __('POST Parameters'));
+			$p->appendChild(new XMLElement('i', __('Optional')));
+			$p->setAttribute('class', 'label');
+			$div->appendChild($p);
+
+			$ol = new XMLElement('ol');
+			$ol->setAttribute('class', 'filters-duplicator');
+			$ol->setAttribute('data-add', __('Add parameter'));
+			$ol->setAttribute('data-remove', __('Remove parameter'));
+
+			if(is_array($settings[self::getClass()]['parameters']) && !empty($settings[self::getClass()]['parameters'])){
+				$ii = 0;
+				foreach($settings[self::getClass()]['parameters'] as $key => $value) {
+					// Namespaces get saved to the file as $name => $uri, however in
+					// the $_POST they are represented as $index => array. This loop
+					// patches the difference.
+					if(is_array($value)) {
+						$key = $value['key'];
+						$value = $value['value'];
+					}
+
+					$li = new XMLElement('li');
+					$li->setAttribute('class', 'instance');
+					$header = new XMLElement('header');
+					$header->appendChild(
+						new XMLElement('h4', __('Parameter'))
+					);
+					$li->appendChild($header);
+
+					$group = new XMLElement('div');
+					$group->setAttribute('class', 'two columns');
+
+					$label = Widget::Label(__('Key'));
+					$label->setAttribute('class', 'column');
+					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][parameters][$ii][key]", General::sanitize($key)));
+					$group->appendChild($label);
+
+					$label = Widget::Label(__('Value'));
+					$label->setAttribute('class', 'column');
+					$label->appendChild(Widget::Input("fields[" . self::getClass() . "][parameters][$ii][value]", General::sanitize($value)));
+					$group->appendChild($label);
+
+					$li->appendChild($group);
+					$ol->appendChild($li);
+					$ii++;
+				}
+			}
+
+			$li = new XMLElement('li');
+			$li->setAttribute('class', 'template');
+			$li->setAttribute('data-type', 'parameter');
+			$header = new XMLElement('header');
+			$header->appendChild(
+				new XMLElement('h4', __('Parameter'))
+			);
+			$li->appendChild($header);
+
+			$group = new XMLElement('div');
+			$group->setAttribute('class', 'two columns');
+
+			$label = Widget::Label(__('Key'));
+			$label->setAttribute('class', 'column');
+			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][parameters][-1][key]'));
+			$group->appendChild($label);
+
+			$label = Widget::Label(__('Value'));
+			$label->setAttribute('class', 'column');
+			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][parameters][-1][value]'));
+			$group->appendChild($label);
+
+			$li->appendChild($group);
+			$ol->appendChild($li);
+
+			$div->appendChild($ol);
+
+			$fieldset->appendChild($div);
+			
+			// JSON POST
+			$label = new XMLElement('label');
+			$input = new XMLElement('input', __('POST as JSON'));
+			$input->setAttribute('name', 'fields[' . self::getClass() . '][jsonpost]');
+			$input->setAttribute('type', 'checkbox');
+			if($settings[self::getClass()]['jsonpost']) {
+				$input->setAttribute('checked','checked');
+			}
+			
+			$label->appendChild($input);
+			$fieldset->appendChild($label);
+			
+			
+			
 			// Included Elements
 			$label = Widget::Label(__('Included Elements'));
 			$label->appendChild(Widget::Input('fields[' . self::getClass() . '][xpath]', General::sanitize($settings[self::getClass()]['xpath'])));
@@ -362,7 +512,7 @@
 			// as we don't have the environment details of where this datasource is going
 			// to be executed.
 			else if(!preg_match('@{([^}]+)}@i', $settings[self::getClass()]['url'])) {
-				$valid_url = self::isValidURL($settings[self::getClass()]['url'], $timeout, $settings[self::getClass()]['format'], true);
+				$valid_url = self::isValidURL($settings[self::getClass()]['url'], $timeout, $settings[self::getClass()]['format'], true, $settings[self::getClass()]['parameters'], $settings[self::getClass()]['jsonpost']);
 
 				// If url was valid, `isValidURL` will return an array of data
 				if(is_array($valid_url)) {
@@ -391,18 +541,19 @@
 		public static function prepare(array $settings, array $params, $template) {
 			$settings = $settings[self::getClass()];
 
+			
 			// Automatically detect namespaces
 			if(!is_null(self::$url_result)) {
 				preg_match_all('/xmlns:([a-z][a-z-0-9\-]*)="([^\"]+)"/i', self::$url_result, $matches);
 
-				if(!is_array($settings['namespace'])) {
-					$settings['namespace'] = array();
+				if(!is_array($settings['namespaces'])) {
+					$settings['namespaces'] = array();
 				}
 
 				if (isset($matches[2][0])) {
 					$detected_namespaces = array();
 
-					foreach ($settings['namespace'] as $index => $namespace) {
+					foreach ($settings['namespaces'] as $index => $namespace) {
 						$detected_namespaces[] = $namespace['name'];
 						$detected_namespaces[] = $namespace['uri'];
 					}
@@ -415,7 +566,7 @@
 						$detected_namespaces[] = $name;
 						$detected_namespaces[] = $uri;
 
-						$settings['namespace'][] = array(
+						$settings['namespaces'][] = array(
 							'name' => $name,
 							'uri' => $uri
 						);
@@ -424,24 +575,36 @@
 			}
 
 			$namespaces = array();
-			if(is_array($settings['namespace'])) {
-				foreach($settings['namespace'] as $index => $data) {
+			if(is_array($settings['namespaces'])) {
+				foreach($settings['namespaces'] as $index => $data) {
 					$namespaces[$data['name']] = $data['uri'];
 				}
 			}
 			self::injectNamespaces($namespaces, $template);
 
+			$parameters = array();
+			if(is_array($settings['parameters'])) {
+				foreach($settings['parameters'] as $index => $data) {
+					$parameters[$data['key']] = $data['value'];
+				}
+			}
+			
+			self::injectParameters($parameters, $template);
+			
 			$timeout = isset($settings['timeout'])
 				? (int)$settings['timeout']
 				: 6;
 
+				// var_dump($settings);
+				// die();
 			return sprintf($template,
 				$params['rootelement'], // rootelement
 				$settings['url'], // url
 				$settings['format'], // format
 				$settings['xpath'], // xpath
 				$settings['cache'], // cache
-				$timeout// timeout
+				$timeout,// timeout
+				$settings['jsonpost']
 			);
 		}
 
@@ -493,7 +656,7 @@
 				$xsl = $stylesheet->generate(true);
 
 				// Check for an existing Cache for this Datasource
-				$cache_id = md5($this->dsParamURL . serialize($this->dsParamNAMESPACES) . $this->dsParamXPATH . $this->dsParamFORMAT);
+				$cache_id = md5($this->dsParamURL . serialize($this->dsParamNAMESPACES) . serialize($this->dsParamPARAMETERS) . $this->dsParamXPATH . $this->dsParamFORMAT . $this->dsParamJSONPOST);
 				$cache = new Cacheable(Symphony::Database());
 
 				$cachedData = $cache->check($cache_id);
@@ -510,15 +673,41 @@
 						$ch = new Gateway;
 						$ch->init($this->dsParamURL);
 						$ch->setopt('TIMEOUT', $this->dsParamTIMEOUT);
-
+						
+						$header = array();
+				
 						// Set the approtiate Accept: headers depending on the format of the URL.
-						if($this->dsParamFORMAT == 'xml') {
-							$ch->setopt('HTTPHEADER', array('Accept: text/xml, */*'));
+						if($format == 'xml') {
+							$header[] = 'Accept: text/xml, */*';
 						}
-						else {
-							$ch->setopt('HTTPHEADER', array('Accept: application/json, */*'));
+						else if($format == 'json') {
+							$header[] = 'Accept: application/json, */*';
 						}
+						
+						$parameters = $this->dsParamPARAMETERS;
+						if (isset($parameters) && is_array($parameters) && !empty($parameters)) {
+							
+							$ch->setopt('POST', count($parameters));
+							$fields = '';
 
+							if($json === 'on') {
+								$fields = json_encode($parameters);
+								$header[] = 'Content-Type: application/json';
+								$header[] = 'Content-Length: ' . strlen($fields);
+								$ch->setopt('CONTENTTYPE', 'application/json');
+							} else {
+								foreach ($parameters as $key => $value) {
+									if(empty($key)) continue;
+									$fields .= $key.'='.$value.'&';
+								}
+								rtrim($fields,'&');
+							}
+								
+
+							$ch->setopt('POSTFIELDS', $fields);
+						}				
+						$ch->setopt('HTTPHEADER', $header);
+						
 						$data = $ch->exec();
 						$info = $ch->getInfoLast();
 
@@ -653,7 +842,7 @@
 			catch(Exception $e){
 				$result->appendChild(new XMLElement('error', $e->getMessage()));
 			}
-
+			
 			if($this->_force_empty_result) $result = $this->emptyXMLSet();
 
 			return $result;
