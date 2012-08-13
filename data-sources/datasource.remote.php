@@ -112,8 +112,8 @@
 					}
 					
 					$gateway->setopt('POST', count($tuples));
-					$fields = '';			
-					if($json === 'on') {
+					$fields = '';					
+					if($json==='on') {
 						$fields = json_encode($tuples);
 						$header[] = 'Content-Type: application/json';
 						$header[] = 'Content-Length: ' . strlen($fields);
@@ -170,14 +170,15 @@
 		}
 
 		/**
-		 * Builds the POST parameters out to be saved in the Datasource file
+		 * Builds the namespaces out to be saved in the Datasource file
 		 *
-		 * @param array $parameters
-		 *  An associative array of POST parameters
+		 * @param array $namespaces
+		 *  An associative array of where the key is the namespace prefix
+		 *  and the value is the namespace URL.
 		 * @param string $template
 		 *  The template file, as defined by `getTemplate()`
 		 * @return string
-		 *  The template injected with the Parameters(if any).
+		 *  The template injected with the Namespaces (if any).
 		 */
 		public static function injectParameters(array $parameters, &$template) {
 			if(empty($parameters)) return;
@@ -451,6 +452,9 @@
 			$ol->appendChild($li);
 
 			$div->appendChild($ol);
+			// $div->appendChild(
+				// new XMLElement('p', __('Namespaces will automatically be discovered when saving this datasource if it does not include any dynamic portions.'), array('class' => 'help'))
+			// );
 
 			$fieldset->appendChild($div);
 			
@@ -464,6 +468,8 @@
 			}
 			
 			$label->appendChild($input);
+			
+			
 			$fieldset->appendChild($label);
 			
 			
@@ -673,6 +679,8 @@
 						$ch = new Gateway;
 						$ch->init($this->dsParamURL);
 						$ch->setopt('TIMEOUT', $this->dsParamTIMEOUT);
+
+						$json = $this->dsParamJSONPOST;
 						
 						$header = array();
 				
@@ -689,8 +697,7 @@
 							
 							$ch->setopt('POST', count($parameters));
 							$fields = '';
-
-							if($json === 'on') {
+							if($json==='on') {
 								$fields = json_encode($parameters);
 								$header[] = 'Content-Type: application/json';
 								$header[] = 'Content-Length: ' . strlen($fields);
