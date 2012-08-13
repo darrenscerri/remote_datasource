@@ -459,6 +459,7 @@
 			$input = new XMLElement('input', __('POST as JSON'));
 			$input->setAttribute('name', 'fields[' . self::getClass() . '][jsonpost]');
 			$input->setAttribute('type', 'checkbox');
+			
 			if($settings[self::getClass()]['jsonpost']) {
 				$input->setAttribute('checked','checked');
 			}
